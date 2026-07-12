@@ -3,10 +3,12 @@ import * as authService from '../services/auth.service';
 import { ApiResponse } from '../utils/ApiResponse';
 import { env } from '../config/env';
 
+// sameSite: 'none' + secure: true required for cross-domain cookies on production
+// (frontend and backend on different Vercel domains)
 const REFRESH_COOKIE_OPTIONS = {
   httpOnly: true,
   secure: env.NODE_ENV === 'production',
-  sameSite: 'lax' as const,
+  sameSite: (env.NODE_ENV === 'production' ? 'none' : 'lax') as 'none' | 'lax',
   maxAge: 30 * 24 * 60 * 60 * 1000, // 30 ngày
   path: '/',
 };
@@ -56,7 +58,12 @@ export const logout = async (req: Request, res: Response, next: NextFunction): P
     if (req.user?.userId) {
       await authService.logout(req.user.userId);
     }
-    res.clearCookie('refreshToken', { path: '/' });
+    res.clearCookie('refreshToken', {
+      httpOnly: true,
+      secure: env.NODE_ENV === 'production',
+      sameSite: (env.NODE_ENV === 'production' ? 'none' : 'lax') as 'none' | 'lax',
+      path: '/',
+    });
     ApiResponse.success(res, null, 'Logged out successfully');
   } catch (err) {
     next(err);
