@@ -1,132 +1,141 @@
+import { createHash } from 'crypto';
 import jwt from 'jsonwebtoken';
+import AuthSession from '../models/authSession.model';
 import User from '../models/user.model';
 import { env } from '../config/env';
 import { ApiError } from '../utils/ApiError';
 import type { IUser } from '../types';
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+export interface RegisterInput { name: string; email: string; password: string }
+export interface LoginInput { email: string; password: string }
+export interface SessionContext { userAgent?: string; ipAddress?: string }
+export interface TokenPair { token: string; refreshToken: string }
+interface RefreshPayload { userId: string; sessionId: string }
 
-export interface RegisterInput {
-  name: string;
-  email: string;
-  password: string;
-}
+const hashToken = (token: string) => createHash('sha256').update(token).digest('hex');
 
-export interface LoginInput {
-  email: string;
-  password: string;
-}
-
-export interface TokenPair {
-  token: string;
-  refreshToken: string;
-}
-
-export interface AuthPayload {
-  user: {
-    id: string;
-    name: string;
-    email: string;
-    role: string;
-  };
-  token: string;
-  refreshToken: string;
-}
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-const signToken = (userId: string, role: string): string =>
+const signAccessToken = (userId: string, role: string): string =>
   jwt.sign({ userId, role }, env.JWT_SECRET, {
     expiresIn: env.JWT_EXPIRES_IN as jwt.SignOptions['expiresIn'],
   });
 
-const signRefreshToken = (userId: string): string =>
-  jwt.sign({ userId }, env.JWT_REFRESH_SECRET, {
+const signRefreshToken = (userId: string, sessionId: string): string =>
+  jwt.sign({ userId, sessionId }, env.JWT_REFRESH_SECRET, {
     expiresIn: env.JWT_REFRESH_EXPIRES_IN as jwt.SignOptions['expiresIn'],
   });
 
-const buildAuthPayload = (user: IUser, tokens: TokenPair): AuthPayload => ({
-  user: {
-    id: user._id.toString(),
-    name: user.name,
-    email: user.email,
-    role: user.role,
-  },
-  token: tokens.token,
-  refreshToken: tokens.refreshToken,
+const publicUser = (user: IUser) => ({
+  id: user._id.toString(),
+  name: user.name,
+  email: user.email,
+  role: user.role,
+  avatar: user.avatar ?? null,
+  level: user.level,
+  learningGoal: user.learningGoal,
+  dailyGoal: user.dailyGoal,
+  timezone: user.timezone,
+  bio: user.bio ?? '',
+  onboardingCompleted: user.onboardingCompleted,
 });
 
-// ─── Register ─────────────────────────────────────────────────────────────────
-
-export const register = async (input: RegisterInput): Promise<AuthPayload> => {
-  const existing = await User.findOne({ email: input.email });
-  if (existing) throw ApiError.badRequest('Email already in use');
-
-  const user = await User.create({
-    name: input.name,
-    email: input.email,
-    password: input.password,
+const createSessionTokens = async (user: IUser, context: SessionContext): Promise<TokenPair> => {
+  const expiresAt = new Date();
+  expiresAt.setDate(expiresAt.getDate() + 30);
+  const session = await AuthSession.create({
+    user: user._id,
+    tokenHash: 'pending',
+    userAgent: context.userAgent?.slice(0, 500) || 'Unknown device',
+    ipAddress: context.ipAddress?.slice(0, 100) || 'Unknown',
+    expiresAt,
   });
-
-  const token = signToken(user._id.toString(), user.role);
-  const refreshToken = signRefreshToken(user._id.toString());
-
-  // Lưu refresh token vào DB
-  user.refreshToken = refreshToken;
-  await user.save({ validateBeforeSave: false });
-
-  return buildAuthPayload(user, { token, refreshToken });
+  const token = signAccessToken(user._id.toString(), user.role);
+  const refreshToken = signRefreshToken(user._id.toString(), session._id.toString());
+  session.tokenHash = hashToken(refreshToken);
+  await session.save();
+  return { token, refreshToken };
 };
 
-// ─── Login ────────────────────────────────────────────────────────────────────
-
-export const login = async (input: LoginInput): Promise<AuthPayload> => {
-  // select('+password +refreshToken') vì cả hai đều có select: false
-  const user = await User.findOne({ email: input.email, isActive: true }).select(
-    '+password +refreshToken'
-  );
-
-  if (!user) throw ApiError.unauthorized('Invalid email or password');
-
-  const isMatch = await user.comparePassword(input.password);
-  if (!isMatch) throw ApiError.unauthorized('Invalid email or password');
-
-  const token = signToken(user._id.toString(), user.role);
-  const refreshToken = signRefreshToken(user._id.toString());
-
-  user.refreshToken = refreshToken;
-  await user.save({ validateBeforeSave: false });
-
-  return buildAuthPayload(user, { token, refreshToken });
+export const register = async (input: RegisterInput, context: SessionContext) => {
+  if (await User.exists({ email: input.email })) throw ApiError.badRequest('Email already in use');
+  const user = await User.create(input);
+  return { user: publicUser(user), ...(await createSessionTokens(user, context)) };
 };
 
-// ─── Refresh token ────────────────────────────────────────────────────────────
+export const login = async (input: LoginInput, context: SessionContext) => {
+  const user = await User.findOne({ email: input.email, isActive: true }).select('+password');
+  if (!user || !(await user.comparePassword(input.password))) {
+    throw ApiError.unauthorized('Invalid email or password');
+  }
+  return { user: publicUser(user), ...(await createSessionTokens(user, context)) };
+};
 
-export const refresh = async (incomingRefreshToken: string): Promise<TokenPair> => {
-  let payload: { userId: string };
-
+export const refresh = async (incomingToken: string): Promise<TokenPair> => {
+  let payload: RefreshPayload;
   try {
-    payload = jwt.verify(incomingRefreshToken, env.JWT_REFRESH_SECRET) as { userId: string };
+    payload = jwt.verify(incomingToken, env.JWT_REFRESH_SECRET) as RefreshPayload;
   } catch {
     throw ApiError.unauthorized('Invalid or expired refresh token');
   }
 
-  const user = await User.findById(payload.userId).select('+refreshToken');
-  if (!user || user.refreshToken !== incomingRefreshToken) {
-    throw ApiError.unauthorized('Refresh token has been revoked');
+  const session = await AuthSession.findOne({
+    _id: payload.sessionId,
+    user: payload.userId,
+    revokedAt: null,
+    expiresAt: { $gt: new Date() },
+  }).select('+tokenHash');
+  if (!session || session.tokenHash !== hashToken(incomingToken)) {
+    throw ApiError.unauthorized('Refresh session has been revoked');
   }
+  const user = await User.findOne({ _id: payload.userId, isActive: true });
+  if (!user) throw ApiError.unauthorized('User is no longer active');
 
-  const token = signToken(user._id.toString(), user.role);
-  const refreshToken = signRefreshToken(user._id.toString());
-
-  user.refreshToken = refreshToken;
-  await user.save({ validateBeforeSave: false });
-
+  const token = signAccessToken(user._id.toString(), user.role);
+  const refreshToken = signRefreshToken(user._id.toString(), session._id.toString());
+  session.tokenHash = hashToken(refreshToken);
+  session.lastUsedAt = new Date();
+  await session.save();
   return { token, refreshToken };
 };
 
-// ─── Logout ───────────────────────────────────────────────────────────────────
+const sessionIdFromToken = (refreshToken?: string): string | null => {
+  if (!refreshToken) return null;
+  const payload = jwt.decode(refreshToken) as Partial<RefreshPayload> | null;
+  return payload?.sessionId ?? null;
+};
 
-export const logout = async (userId: string): Promise<void> => {
-  await User.findByIdAndUpdate(userId, { refreshToken: null });
+export const logout = async (refreshToken?: string): Promise<void> => {
+  const sessionId = sessionIdFromToken(refreshToken);
+  if (sessionId) await AuthSession.findByIdAndUpdate(sessionId, { revokedAt: new Date() });
+};
+
+export const logoutAll = async (userId: string): Promise<void> => {
+  await AuthSession.updateMany({ user: userId, revokedAt: null }, { revokedAt: new Date() });
+};
+
+export const listSessions = async (userId: string, currentRefreshToken?: string) => {
+  const currentId = sessionIdFromToken(currentRefreshToken);
+  const sessions = await AuthSession.find({ user: userId, revokedAt: null, expiresAt: { $gt: new Date() } })
+    .sort({ lastUsedAt: -1 });
+  return sessions.map((session) => ({
+    id: session._id.toString(),
+    userAgent: session.userAgent,
+    ipAddress: session.ipAddress,
+    lastUsedAt: session.lastUsedAt,
+    createdAt: session.createdAt,
+    current: session._id.toString() === currentId,
+  }));
+};
+
+export const revokeSession = async (userId: string, sessionId: string): Promise<void> => {
+  const result = await AuthSession.updateOne(
+    { _id: sessionId, user: userId, revokedAt: null },
+    { revokedAt: new Date() }
+  );
+  if (!result.matchedCount) throw ApiError.notFound('Session not found');
+};
+
+export const getCurrentUser = async (userId: string) => {
+  const user = await User.findOne({ _id: userId, isActive: true });
+  if (!user) throw ApiError.notFound('User not found');
+  return publicUser(user);
 };

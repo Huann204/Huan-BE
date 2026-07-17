@@ -1,6 +1,6 @@
 import { Document, Types } from 'mongoose';
 
-// ─── Pagination ───────────────────────────────────────────────────────────────
+// â”€â”€â”€ Pagination â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export interface PaginationQuery {
   page?: number;
   limit?: number;
@@ -17,8 +17,10 @@ export interface PaginationMeta extends Record<string, unknown> {
   hasPrev: boolean;
 }
 
-// ─── User ─────────────────────────────────────────────────────────────────────
+// â”€â”€â”€ User â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export type UserRole = 'user' | 'instructor' | 'admin';
+export type EnglishLevel = 'A0' | 'A1' | 'A2' | 'B1' | 'B2' | 'C1';
+export type LearningGoal = 'conversation' | 'work' | 'travel' | 'exam' | 'general';
 
 export interface IUser extends Document {
   _id: Types.ObjectId;
@@ -29,7 +31,15 @@ export interface IUser extends Document {
   avatar?: string;
   isActive: boolean;
   refreshToken?: string;
+  level: EnglishLevel;
+  learningGoal: LearningGoal;
+  dailyGoal: number;
+  timezone: string;
+  bio?: string;
+  onboardingCompleted: boolean;
   createdAt: Date;
   updatedAt: Date;
   comparePassword(candidatePassword: string): Promise<boolean>;
 }
+
+

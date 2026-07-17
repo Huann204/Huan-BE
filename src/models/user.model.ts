@@ -42,6 +42,37 @@ const userSchema = new Schema<IUser>(
       default: null,
       select: false,
     },
+    level: {
+      type: String,
+      enum: ['A0', 'A1', 'A2', 'B1', 'B2', 'C1'],
+      default: 'A0',
+    },
+    learningGoal: {
+      type: String,
+      enum: ['conversation', 'work', 'travel', 'exam', 'general'],
+      default: 'general',
+    },
+    dailyGoal: {
+      type: Number,
+      min: 5,
+      max: 60,
+      default: 15,
+    },
+    timezone: {
+      type: String,
+      default: 'Asia/Ho_Chi_Minh',
+      maxlength: 100,
+    },
+    bio: {
+      type: String,
+      trim: true,
+      maxlength: 300,
+      default: '',
+    },
+    onboardingCompleted: {
+      type: Boolean,
+      default: false,
+    },
   },
   {
     timestamps: true,
@@ -74,3 +105,5 @@ userSchema.set('toJSON', {
 
 const User = mongoose.model<IUser>('User', userSchema);
 export default User;
+
+
