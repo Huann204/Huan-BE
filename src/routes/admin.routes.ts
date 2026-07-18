@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { body, param } from 'express-validator';
 import * as controller from '../controllers/vocabularyAdmin.controller';
+import * as grammar from '../controllers/grammarAdmin.controller';
 import { authenticate, authorize } from '../middleware/auth';
 import { validate } from '../middleware/validate';
 
@@ -17,4 +18,15 @@ router.patch('/vocabulary/words/:id', param('id').isMongoId(), validate, control
 router.delete('/vocabulary/words/:id', param('id').isMongoId(), validate, controller.archiveWord);
 router.post('/vocabulary/import', body('items').isArray({ min: 1, max: 1000 }), validate, controller.importWords);
 
+router.get('/grammar/topics', grammar.topics);
+router.post('/grammar/topics', grammar.createTopic);
+router.patch('/grammar/topics/:id', param('id').isMongoId(), validate, grammar.updateTopic);
+router.delete('/grammar/topics/:id', param('id').isMongoId(), validate, grammar.archiveTopic);
+router.get('/grammar/topics/:topicId/exercises', param('topicId').isMongoId(), validate, grammar.exercises);
+router.post('/grammar/exercises', grammar.createExercise);
+router.patch('/grammar/exercises/:id', param('id').isMongoId(), validate, grammar.updateExercise);
+router.delete('/grammar/exercises/:id', param('id').isMongoId(), validate, grammar.archiveExercise);
+
 export default router;
+
+
