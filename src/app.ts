@@ -1,3 +1,4 @@
+import path from 'path';
 import express, { Application } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -14,7 +15,7 @@ import { router as apiRouter } from './routes/index';
 const app: Application = express();
 
 app.set('trust proxy', 1);
-app.use(helmet());
+app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
 app.use(cors({ origin: env.CLIENT_URL, credentials: true }));
 
 const limiter = rateLimit({
@@ -31,16 +32,14 @@ if (env.NODE_ENV === 'development') app.use(morgan('dev'));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
+app.use('/uploads', express.static(path.resolve(process.cwd(), 'uploads'), { maxAge: '7d', immutable: true }));
 
 app.use(async (_req, _res, next) => {
   await connectDB();
   next();
 });
 
-app.get('/', (_req, res) => {
-  res.send('EngLearn API');
-});
-
+app.get('/', (_req, res) => { res.send('EngLearn API'); });
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok', env: env.NODE_ENV, timestamp: new Date().toISOString() });
 });
