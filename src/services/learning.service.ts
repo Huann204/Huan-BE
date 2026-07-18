@@ -1,5 +1,6 @@
 import { Types } from 'mongoose';
 import { learningTopics, learningWords } from '../data/learningSeed';
+import { topicImage } from '../data/vocabularyImages';
 import LearningProgress, { IWordProgress } from '../models/learningProgress.model';
 import PracticeSession from '../models/practiceSession.model';
 import VocabularyTopic from '../models/vocabularyTopic.model';
@@ -16,7 +17,7 @@ const startOfToday = (): Date => {
 
 const dateKey = (date: Date): string => date.toISOString().slice(0, 10);
 
-const publicWord = (word: IVocabularyWord) => ({
+const publicWord = (word: IVocabularyWord, fallbackImageUrl: string | null = null) => ({
   id: word._id.toString(),
   topicId: word.topic.toString(),
   slug: word.slug,
@@ -26,6 +27,7 @@ const publicWord = (word: IVocabularyWord) => ({
   example: word.example,
   exampleMeaning: word.exampleMeaning,
   emoji: word.emoji,
+  imageUrl: word.imageUrl || fallbackImageUrl,
 });
 
 export const ensureLearningContent = async (): Promise<void> => {
@@ -33,13 +35,19 @@ export const ensureLearningContent = async (): Promise<void> => {
     VocabularyTopic.countDocuments({ isPublished: true }),
     VocabularyWord.countDocuments({ isPublished: true }),
   ]);
-  if (topicCount >= learningTopics.length && wordCount >= learningWords.length) return;
+
+  const contentIsComplete = topicCount >= learningTopics.length && wordCount >= learningWords.length;
+  const missingImages = await VocabularyTopic.exists({
+    isPublished: true,
+    $or: [{ imageUrl: null }, { imageUrl: { $exists: false } }, { imageUrl: '' }],
+  });
+  if (contentIsComplete && !missingImages) return;
 
   await VocabularyTopic.bulkWrite(
     learningTopics.map((topic) => ({
       updateOne: {
         filter: { slug: topic.slug },
-        update: { $set: { ...topic, isPublished: true } },
+        update: { $set: { ...topic, imageUrl: topicImage(topic.slug), isPublished: true } },
         upsert: true,
       },
     }))
@@ -47,12 +55,20 @@ export const ensureLearningContent = async (): Promise<void> => {
 
   const topics = await VocabularyTopic.find({ slug: { $in: learningTopics.map((topic) => topic.slug) } });
   const topicIds = new Map(topics.map((topic) => [topic.slug, topic._id]));
+  const topicImages = new Map(topics.map((topic) => [topic.slug, topic.imageUrl || topicImage(topic.slug)]));
 
   await VocabularyWord.bulkWrite(
     learningWords.map(({ topic, ...word }) => ({
       updateOne: {
         filter: { topic: topicIds.get(topic), word: word.word },
-        update: { $set: { ...word, topic: topicIds.get(topic), isPublished: true } },
+        update: {
+          $set: {
+            ...word,
+            topic: topicIds.get(topic),
+            imageUrl: topicImages.get(topic) ?? null,
+            isPublished: true,
+          },
+        },
         upsert: true,
       },
     }))
@@ -83,6 +99,7 @@ export const getTopics = async (userId: string) => {
         title: topic.title,
         description: topic.description,
         emoji: topic.emoji,
+        imageUrl: topic.imageUrl || topicImage(topic.slug),
         color: topic.color,
         wordCount: wordIds.length,
         learnedCount: wordIds.filter((id) => learnedIds.has(id.toString())).length,
@@ -104,7 +121,7 @@ export const getTopicWords = async (userId: string, slug: string) => {
   return words.map((word) => {
     const item = progressByWord.get(word._id.toString());
     return {
-      ...publicWord(word),
+      ...publicWord(word, topic.imageUrl || topicImage(topic.slug)),
       progress: item
         ? { reviews: item.reviews, correct: item.correct, nextReview: item.nextReview }
         : null,
@@ -183,18 +200,27 @@ export const getReviewQueue = async (userId: string) => {
   const progress = await getOrCreateProgress(userId);
   const due = progress.words.filter((item) => item.nextReview <= new Date());
   const words = await VocabularyWord.find({ _id: { $in: due.map((item) => item.word) }, isPublished: true });
+  const topics = await VocabularyTopic.find({ _id: { $in: words.map((word) => word.topic) } });
+  const topicImages = new Map(topics.map((topic) => [topic._id.toString(), topic.imageUrl || topicImage(topic.slug)]));
   const byId = new Map(words.map((word) => [word._id.toString(), word]));
   return due.flatMap((item) => {
     const word = byId.get(item.word.toString());
-    return word ? [publicWord(word)] : [];
+    return word ? [publicWord(word, topicImages.get(word.topic.toString()) ?? null)] : [];
   });
 };
 
 export const getDashboard = async (userId: string) => {
-  const [progress, todaySessions] = await Promise.all([
+  await ensureLearningContent();
+  const [progress, todaySessions, wordCount] = await Promise.all([
     getOrCreateProgress(userId),
     PracticeSession.find({ user: userId, completedAt: { $gte: startOfToday() } }),
+    VocabularyWord.countDocuments({ isPublished: true }),
   ]);
+  const dayNumber = Math.floor(Date.now() / 86_400_000);
+  const featured = wordCount
+    ? await VocabularyWord.findOne({ isPublished: true }).sort({ order: 1, _id: 1 }).skip(dayNumber % wordCount)
+    : null;
+  const featuredTopic = featured ? await VocabularyTopic.findById(featured.topic) : null;
   const dueCount = progress.words.filter((item) => item.nextReview <= new Date()).length;
   return {
     xp: progress.xp,
@@ -205,6 +231,9 @@ export const getDashboard = async (userId: string) => {
     dailyGoal: progress.dailyGoal,
     dueCount,
     learnedWords: progress.words.length,
+    featuredWord: featured
+      ? publicWord(featured, featuredTopic?.imageUrl || topicImage(featuredTopic?.slug ?? ''))
+      : null,
   };
 };
 
@@ -222,9 +251,3 @@ export const getProgressReport = async (userId: string) => {
     accuracy: totalReviews === 0 ? 0 : Math.round((totalCorrect / totalReviews) * 100),
   };
 };
-
-
-
-
-
-

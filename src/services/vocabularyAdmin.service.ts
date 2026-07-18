@@ -6,11 +6,20 @@ import { ensureLearningContent } from './learning.service';
 export const listContent = async () => {
   await ensureLearningContent();
   const topics = await VocabularyTopic.find().sort({ order: 1 });
-  return Promise.all(topics.map(async (topic) => ({
-    id: topic._id.toString(), slug: topic.slug, title: topic.title, description: topic.description,
-    emoji: topic.emoji, color: topic.color, order: topic.order, isPublished: topic.isPublished,
-    wordCount: await VocabularyWord.countDocuments({ topic: topic._id }),
-  })));
+  return Promise.all(
+    topics.map(async (topic) => ({
+      id: topic._id.toString(),
+      slug: topic.slug,
+      title: topic.title,
+      description: topic.description,
+      emoji: topic.emoji,
+      imageUrl: topic.imageUrl,
+      color: topic.color,
+      order: topic.order,
+      isPublished: topic.isPublished,
+      wordCount: await VocabularyWord.countDocuments({ topic: topic._id }),
+    }))
+  );
 };
 
 export const createTopic = (input: Record<string, unknown>) => VocabularyTopic.create(input);
@@ -46,23 +55,46 @@ export const archiveWord = async (id: string) => {
 };
 
 interface ImportWord {
-  topicSlug: string; slug: string; word: string; phonetic?: string;
-  meaning: { vi: string; en: string }; example?: string; exampleMeaning?: string; emoji?: string; order?: number;
+  topicSlug: string;
+  slug: string;
+  word: string;
+  phonetic?: string;
+  meaning: { vi: string; en: string };
+  example?: string;
+  exampleMeaning?: string;
+  emoji?: string;
+  imageUrl?: string | null;
+  order?: number;
 }
 
 export const importWords = async (items: ImportWord[]) => {
-  const topics = await VocabularyTopic.find({ slug: { $in: [...new Set(items.map((item) => item.topicSlug))] } });
+  const topics = await VocabularyTopic.find({
+    slug: { $in: [...new Set(items.map((item) => item.topicSlug))] },
+  });
   const topicIds = new Map(topics.map((topic) => [topic.slug, topic._id]));
+  const topicImages = new Map(topics.map((topic) => [topic.slug, topic.imageUrl ?? null]));
   const valid = items.filter((item) => topicIds.has(item.topicSlug));
   if (!valid.length) throw ApiError.badRequest('No valid topic slugs found');
-  const result = await VocabularyWord.bulkWrite(valid.map(({ topicSlug, ...item }) => ({
-    updateOne: {
-      filter: { topic: topicIds.get(topicSlug), word: item.word },
-      update: { $set: { ...item, topic: topicIds.get(topicSlug), phonetic: item.phonetic ?? '', example: item.example ?? '', exampleMeaning: item.exampleMeaning ?? '', emoji: item.emoji ?? 'đŸ“', isPublished: true } },
-      upsert: true,
-    },
-  })));
+
+  const result = await VocabularyWord.bulkWrite(
+    valid.map(({ topicSlug, ...item }) => ({
+      updateOne: {
+        filter: { topic: topicIds.get(topicSlug), word: item.word },
+        update: {
+          $set: {
+            ...item,
+            topic: topicIds.get(topicSlug),
+            phonetic: item.phonetic ?? '',
+            example: item.example ?? '',
+            exampleMeaning: item.exampleMeaning ?? '',
+            emoji: item.emoji ?? '🖼️',
+            imageUrl: item.imageUrl || topicImages.get(topicSlug),
+            isPublished: true,
+          },
+        },
+        upsert: true,
+      },
+    }))
+  );
   return { processed: valid.length, upserted: result.upsertedCount, updated: result.modifiedCount };
 };
-
-

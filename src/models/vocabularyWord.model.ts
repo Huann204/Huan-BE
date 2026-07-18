@@ -10,6 +10,7 @@ export interface IVocabularyWord extends Document {
   example: string;
   exampleMeaning: string;
   emoji: string;
+  imageUrl?: string | null;
   order: number;
   isPublished: boolean;
 }
@@ -29,6 +30,7 @@ const vocabularyWordSchema = new Schema<IVocabularyWord>(
     example: { type: String, required: true },
     exampleMeaning: { type: String, required: true },
     emoji: { type: String, required: true },
+    imageUrl: { type: String, default: null, trim: true },
     order: { type: Number, default: 0 },
     isPublished: { type: Boolean, default: true },
   },

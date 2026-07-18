@@ -6,6 +6,7 @@ export interface IVocabularyTopic extends Document {
   title: { vi: string; en: string };
   description: { vi: string; en: string };
   emoji: string;
+  imageUrl?: string | null;
   color: string;
   order: number;
   isPublished: boolean;
@@ -22,6 +23,7 @@ const vocabularyTopicSchema = new Schema<IVocabularyTopic>(
     title: { type: localizedTextSchema, required: true },
     description: { type: localizedTextSchema, required: true },
     emoji: { type: String, required: true },
+    imageUrl: { type: String, default: null, trim: true },
     color: { type: String, required: true },
     order: { type: Number, default: 0 },
     isPublished: { type: Boolean, default: true },
