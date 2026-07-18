@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import adminRoutes from './admin.routes';
+import aiRoutes from './ai.routes';
 import authRoutes from './auth.routes';
 import communityRoutes from './community.routes';
 import engagementRoutes from './engagement.routes';
@@ -13,6 +14,7 @@ import wordSetRoutes from './wordSet.routes';
 export const router = Router();
 
 router.use('/admin', adminRoutes);
+router.use('/ai', aiRoutes);
 router.use('/auth', authRoutes);
 router.use('/community', communityRoutes);
 router.use('/users', userRoutes);
