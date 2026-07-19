@@ -10,14 +10,20 @@ type ToolFeature = 'writing' | 'vocabulary' | 'exercises';
 const clean = (value: unknown, max: number) => String(value ?? '').trim().slice(0, max);
 
 const consumeQuota = async (userId: string, feature: ToolFeature) => {
-  const hourAgo = new Date(Date.now() - 3_600_000);
-  const dayAgo = new Date(Date.now() - 86_400_000);
-  const [hourly, daily] = await Promise.all([
-    AiToolUsage.countDocuments({ user: userId, createdAt: { $gte: hourAgo } }),
-    AiToolUsage.countDocuments({ user: userId, createdAt: { $gte: dayAgo } }),
-  ]);
-  if (hourly >= 10) throw new ApiError('AI tools hourly limit reached.', 429);
-  if (daily >= 40) throw new ApiError('AI tools daily limit reached.', 429);
+  /*
+   * QUOTA TEMPORARILY DISABLED.
+   * Bỏ dấu comment của khối này để bật lại giới hạn chung 10 lần/giờ và 40 lần/ngày.
+   *
+   * const hourAgo = new Date(Date.now() - 3_600_000);
+   * const dayAgo = new Date(Date.now() - 86_400_000);
+   * const [hourly, daily] = await Promise.all([
+   *   AiToolUsage.countDocuments({ user: userId, createdAt: { $gte: hourAgo } }),
+   *   AiToolUsage.countDocuments({ user: userId, createdAt: { $gte: dayAgo } }),
+   * ]);
+   * if (hourly >= 10) throw new ApiError('AI tools hourly limit reached.', 429);
+   * if (daily >= 40) throw new ApiError('AI tools daily limit reached.', 429);
+   */
+  // Vẫn ghi usage để sau này bật quota có sẵn dữ liệu thống kê.
   await AiToolUsage.create({ user: userId, feature });
 };
 

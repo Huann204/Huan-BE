@@ -81,15 +81,20 @@ const validateOutput = (value: unknown, requestedCount: number): GeneratedWordSe
   };
 };
 
-const checkQuota = async (userId: string) => {
-  const hourAgo = new Date(Date.now() - 60 * 60 * 1000);
-  const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-  const [hourly, daily] = await Promise.all([
-    AiGeneration.countDocuments({ user: userId, createdAt: { $gte: hourAgo } }),
-    AiGeneration.countDocuments({ user: userId, createdAt: { $gte: dayAgo } }),
-  ]);
-  if (hourly >= 5) throw new ApiError('AI generation limit reached. Try again in an hour.', 429);
-  if (daily >= 20) throw new ApiError('Daily AI generation limit reached.', 429);
+const checkQuota = async (_userId: string) => {
+  /*
+   * QUOTA TEMPORARILY DISABLED.
+   * Bỏ dấu comment của khối này để bật lại giới hạn tạo bộ từ 5 lần/giờ và 20 lần/ngày.
+   *
+   * const hourAgo = new Date(Date.now() - 60 * 60 * 1000);
+   * const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+   * const [hourly, daily] = await Promise.all([
+   *   AiGeneration.countDocuments({ user: _userId, createdAt: { $gte: hourAgo } }),
+   *   AiGeneration.countDocuments({ user: _userId, createdAt: { $gte: dayAgo } }),
+   * ]);
+   * if (hourly >= 5) throw new ApiError('AI generation limit reached. Try again in an hour.', 429);
+   * if (daily >= 20) throw new ApiError('Daily AI generation limit reached.', 429);
+   */
 };
 
 export const generateWordSet = async (userId: string, input: { topic: string; level: Level; count: number; notes?: string }) => {

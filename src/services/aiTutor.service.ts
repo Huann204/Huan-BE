@@ -15,15 +15,20 @@ interface InteractionResponse {
 
 const clean = (value: unknown, max: number) => String(value ?? '').trim().slice(0, max);
 
-const quota = async (userId: string) => {
-  const minuteAgo = new Date(Date.now() - 60_000);
-  const dayAgo = new Date(Date.now() - 86_400_000);
-  const [perMinute, perDay] = await Promise.all([
-    AiTutorUsage.countDocuments({ user: userId, createdAt: { $gte: minuteAgo } }),
-    AiTutorUsage.countDocuments({ user: userId, createdAt: { $gte: dayAgo } }),
-  ]);
-  if (perMinute >= 8) throw new ApiError('You are sending messages too quickly. Please wait a moment.', 429);
-  if (perDay >= 100) throw new ApiError('Daily AI Tutor limit reached.', 429);
+const quota = async (_userId: string) => {
+  /*
+   * QUOTA TEMPORARILY DISABLED.
+   * Bỏ dấu comment của khối này để bật lại giới hạn 8 tin/phút và 100 tin/ngày.
+   *
+   * const minuteAgo = new Date(Date.now() - 60_000);
+   * const dayAgo = new Date(Date.now() - 86_400_000);
+   * const [perMinute, perDay] = await Promise.all([
+   *   AiTutorUsage.countDocuments({ user: _userId, createdAt: { $gte: minuteAgo } }),
+   *   AiTutorUsage.countDocuments({ user: _userId, createdAt: { $gte: dayAgo } }),
+   * ]);
+   * if (perMinute >= 8) throw new ApiError('You are sending messages too quickly. Please wait a moment.', 429);
+   * if (perDay >= 100) throw new ApiError('Daily AI Tutor limit reached.', 429);
+   */
 };
 
 const extractText = (interaction: InteractionResponse) => interaction.steps
